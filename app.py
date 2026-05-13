@@ -2,15 +2,12 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# Configuración inicial
-st.set_page_config(page_title="Gestión Electoral San Fernando", layout="wide")
+# Configuración de página
+st.set_page_config(page_title="Escrutinio San Fernando", layout="wide")
 
-# --- PERSISTENCIA DE DATOS (Simulada para Web) ---
-# En una versión web profesional, esto se conectaría a una base de datos.
-# Para esta versión, usaremos session_state para que sea funcional al instante.
-
+# --- INICIALIZACIÓN DE DATOS ---
 if 'mesas_master' not in st.session_state:
-    # Carga inicial de todas tus mesas
+    # Datos iniciales (San Fernando)
     data_inicial = [
         ["CASA DE LA CULTURA", 2, 1, "U"], ["CASA DE LA CULTURA", 3, 1, "A"], ["CASA DE LA CULTURA", 3, 1, "B"], ["CASA DE LA CULTURA", 3, 6, "U"],
         ["CASA DE LA JUVENTUD", 6, 10, "A"], ["CASA DE LA JUVENTUD", 6, 10, "B"], ["CASA DE LA JUVENTUD", 6, 22, "U"], ["CASA DE LA JUVENTUD", 6, 28, "A"], ["CASA DE LA JUVENTUD", 6, 28, "B"],
@@ -49,93 +46,102 @@ if 'mesas_master' not in st.session_state:
         "ID_Mesa", "Colegio", "Dist", "Secc", "Interventor", "Electores", "PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros"
     ])
 
-# --- INTERFAZ ---
-st.title("🏛️ Control Electoral Municipal")
+# Colores oficiales para los gráficos
+COLOR_MAP = {
+    "PP": "#1E4B8F", "PSOE": "#EF1C27", "VOX": "#63BE21",
+    "Adelante": "#00C2E0", "Por_And": "#622D8B", "Otros": "#A0A0A0"
+}
 
-tabs = st.tabs(["🗳️ Registro de Votos", "📊 Análisis y Gráficos", "⚙️ Configuración de Mesas"])
+st.title("🗳️ Portal de Escrutinio San Fernando")
 
-# --- TAB 1: REGISTRO DE VOTOS ---
-with tabs[0]:
-    st.header("Entrada de Datos por Mesa")
-    
-    # Crear ID único para el selector
+# Uso de tabs con keys para evitar el error de removeChild
+tab_votos, tab_analisis, tab_config = st.tabs(["Registro de Datos", "Análisis por Zona", "Configuración"])
+
+# --- PESTAÑA 1: REGISTRO ---
+with tab_votos:
+    st.header("Entrada de Datos")
     df_m = st.session_state.mesas_master
     opciones = df_m.apply(lambda x: f"{x['Dist']}-{x['Secc']}-{x['Mesa']} | {x['Colegio']}", axis=1).tolist()
     
-    with st.form("form_votos"):
-        col_m1, col_m2 = st.columns(2)
-        with col_m1:
-            seleccion = st.selectbox("Selecciona la Mesa", opciones)
-            interventor = st.text_input("Nombre de la persona en el colegio")
-        with col_m2:
-            censo = st.number_input("Número de electores totales", min_value=0)
+    with st.form("form_registro", clear_on_submit=False):
+        c_top1, c_top2 = st.columns(2)
+        seleccion = c_top1.selectbox("Busca tu Mesa", opciones, key="sel_mesa")
+        responsable = c_top2.text_input("Interventor / Apoderado", key="inp_resp")
         
-        st.subheader("Escrutinio")
-        c1, c2, c3 = st.columns(3)
-        v_pp = c1.number_input("PP", min_value=0)
-        v_psoe = c2.number_input("PSOE", min_value=0)
-        v_vox = c3.number_input("VOX", min_value=0)
-        v_adelante = c1.number_input("Adelante Andalucía", min_value=0)
-        v_por_and = c2.number_input("Por Andalucía", min_value=0)
-        v_otros = c3.number_input("Otros", min_value=0)
+        censo = st.number_input("Censo Total de la Mesa", min_value=0, step=1, key="num_censo")
         
-        if st.form_submit_button("Grabar Mesa"):
+        st.divider()
+        st.subheader("Resultados del Escrutinio")
+        v1, v2, v3 = st.columns(3)
+        v_pp = v1.number_input("PP", min_value=0, step=1)
+        v_psoe = v2.number_input("PSOE", min_value=0, step=1)
+        v_vox = v3.number_input("VOX", min_value=0, step=1)
+        v_ade = v1.number_input("Adelante Andalucía", min_value=0, step=1)
+        v_por = v2.number_input("Por Andalucía", min_value=0, step=1)
+        v_otr = v3.number_input("Otros", min_value=0, step=1)
+        
+        if st.form_submit_button("Guardar Mesa"):
             id_m = seleccion.split(" | ")[0]
-            colegio = seleccion.split(" | ")[1]
-            dist_val = int(id_m.split("-")[0])
-            secc_val = int(id_m.split("-")[1])
+            col_m = seleccion.split(" | ")[1]
+            d_val = int(id_m.split("-")[0])
+            s_val = int(id_m.split("-")[1])
             
-            nueva_data = {
-                "ID_Mesa": id_m, "Colegio": colegio, "Dist": dist_val, "Secc": secc_val,
-                "Interventor": interventor, "Electores": censo, "PP": v_pp, "PSOE": v_psoe,
-                "VOX": v_vox, "Adelante": v_adelante, "Por_And": v_por_and, "Otros": v_otros
+            nueva_fila = {
+                "ID_Mesa": id_m, "Colegio": col_m, "Dist": d_val, "Secc": s_val,
+                "Interventor": responsable, "Electores": censo, "PP": v_pp, "PSOE": v_psoe,
+                "VOX": v_vox, "Adelante": v_ade, "Por_And": v_por, "Otros": v_otr
             }
-            # Eliminar si ya existía la mesa para actualizarla
+            # Actualizar datos
             st.session_state.votos = st.session_state.votos[st.session_state.votos.ID_Mesa != id_m]
-            st.session_state.votos = pd.concat([st.session_state.votos, pd.DataFrame([nueva_data])], ignore_index=True)
-            st.success(f"Datos guardados para la mesa {id_m}")
+            st.session_state.votos = pd.concat([st.session_state.votos, pd.DataFrame([nueva_fila])], ignore_index=True)
+            st.success(f"✅ Mesa {id_m} registrada con éxito.")
 
-# --- TAB 2: ANÁLISIS ---
-with tabs[1]:
+# --- PESTAÑA 2: ANÁLISIS ---
+with tab_analisis:
     if st.session_state.votos.empty:
-        st.info("No hay datos grabados todavía.")
+        st.warning("No hay datos cargados. Registra alguna mesa para ver el análisis.")
     else:
-        st.header("Resultados Agrupados")
-        
-        modo = st.radio("Agrupar por:", ["Municipio (Global)", "Distrito", "Sección"], horizontal=True)
-        
+        filtro = st.radio("Nivel de agrupación:", ["Global Municipio", "Por Distrito", "Por Sección"], horizontal=True, key="filtro_ana")
         df_v = st.session_state.votos
-        cols_votos = ["PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros"]
-        
-        if modo == "Municipio (Global)":
-            res = df_v[cols_votos].sum().reset_index()
-            res.columns = ["Partido", "Votos"]
-            fig = px.bar(res, x="Partido", y="Votos", color="Partido", title="Resultado Global")
-            st.plotly_chart(fig, use_container_width=True)
-            st.table(res)
-            
-        elif modo == "Distrito":
-            res_dist = df_v.groupby("Dist")[cols_votos].sum()
-            st.dataframe(res_dist)
-            fig_dist = px.bar(res_dist.reset_index(), x="Dist", y=cols_votos, title="Votos por Distrito")
-            st.plotly_chart(fig_dist, use_container_width=True)
-            
-        elif modo == "Sección":
-            res_secc = df_v.groupby(["Dist", "Secc"])[cols_votos].sum()
-            st.dataframe(res_secc)
+        cols_p = ["PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros"]
 
-# --- TAB 3: CONFIGURACIÓN ---
-with tabs[2]:
-    st.header("Gestión del Maestro de Mesas")
+        if filtro == "Global Municipio":
+            totales = df_v[cols_p].sum().reset_index()
+            totales.columns = ["Partido", "Votos"]
+            fig_g = px.bar(totales, x="Partido", y="Votos", color="Partido", color_discrete_map=COLOR_MAP, title="Total San Fernando")
+            st.plotly_chart(fig_g, use_container_width=True)
+            st.dataframe(totales.set_index("Partido").T, use_container_width=True)
+
+        elif filtro == "Por Distrito":
+            df_dist = df_v.groupby("Dist")[cols_p].sum().reset_index()
+            st.subheader("Resultados por Distritos")
+            st.dataframe(df_dist, hide_index=True)
+            fig_d = px.bar(df_dist, x="Dist", y=cols_p, barmode="group", color_discrete_map=COLOR_MAP, title="Comparativa por Distritos")
+            st.plotly_chart(fig_d, use_container_width=True)
+
+        elif filtro == "Por Sección":
+            df_secc = df_v.groupby(["Dist", "Secc"])[cols_p].sum().reset_index()
+            st.subheader("Detalle por Secciones Electorales")
+            st.dataframe(df_secc, hide_index=True)
+
+# --- PESTAÑA 3: CONFIGURACIÓN ---
+with tab_config:
+    st.header("Mantenimiento de Mesas")
+    st.info("Desde aquí puedes añadir nuevas mesas o eliminar las existentes. Pulsa en 'Aplicar Cambios' para guardar.")
     
-    # Editor de datos (Permite borrar, añadir y editar filas directamente)
-    df_editado = st.data_editor(st.session_state.mesas_master, num_rows="dynamic", use_container_width=True)
+    # Clave fija para evitar errores de renderizado
+    df_actualizado = st.data_editor(
+        st.session_state.mesas_master, 
+        num_rows="dynamic", 
+        key="editor_maestro",
+        use_container_width=True
+    )
     
-    if st.button("Guardar cambios en el Maestro"):
-        st.session_state.mesas_master = df_editado
-        st.success("Listado de mesas actualizado correctamente.")
-        
+    if st.button("Aplicar Cambios al Maestro"):
+        st.session_state.mesas_master = df_actualizado
+        st.success("Configuración actualizada.")
+
     st.divider()
-    # Opción de descargar los datos para no perderlos
-    csv = st.session_state.votos.to_csv(index=False).encode('utf-8')
-    st.download_button("Descargar Backup de Votos (CSV)", csv, "votos_san_fernando.csv", "text/csv")
+    st.subheader("Exportar Datos")
+    csv_data = st.session_state.votos.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Descargar Resultados Actuales (CSV)", csv_data, "resultados_san_fernando.csv", "text/csv")
