@@ -364,6 +364,46 @@ with tab_config:
             st.success("✅ Maestro actualizado en Supabase.")
 
         st.divider()
+        st.subheader("📥 Exportar Datos")
+
+        # --- Exportar Maestro de Mesas (con apoderados/interventores actualizados) ---
+        df_maestro_export = cargar_mesas_master()
+        csv_maestro = df_maestro_export.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="⬇️ Descargar Maestro de Mesas (CSV)",
+            data=csv_maestro,
+            file_name="maestro_mesas.csv",
+            mime="text/csv"
+        )
+
+        # --- Exportar Resultados de Votos ---
+        df_votos_export = cargar_votos()
+        csv_votos = df_votos_export.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="⬇️ Descargar Resultados de Votos (CSV)",
+            data=csv_votos,
+            file_name="resultados_votos.csv",
+            mime="text/csv"
+        )
+
+        # --- Exportar CSV combinado (maestro + votos) ---
+        if not df_votos_export.empty and not df_maestro_export.empty:
+            df_combinado = pd.merge(
+                df_maestro_export,
+                df_votos_export[["ID_Mesa", "Electores", "PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros"]],
+                left_on=df_maestro_export.apply(lambda x: f"{x['Dist']}-{x['Secc']}-{x['Mesa']}", axis=1),
+                right_on="ID_Mesa",
+                how="left"
+            ).drop(columns=["key_0", "ID_Mesa"], errors="ignore")
+            csv_combinado = df_combinado.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="⬇️ Descargar Informe Completo (CSV)",
+                data=csv_combinado,
+                file_name="informe_completo.csv",
+                mime="text/csv"
+            )
+
+        st.divider()
 
         if st.button("⚠️ BORRAR TODOS LOS VOTOS (Reiniciar Jornada)"):
             borrar_todos_los_votos()
