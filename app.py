@@ -109,6 +109,27 @@ def guardar_voto(nueva_fila: dict):
         "psoe": int(nueva_fila["PSOE"]),
         "vox": int(nueva_fila["VOX"]),
         "adelante": int(nueva_fila["Adelante"]),
+def calcular_dhondt(votos_dict, escanios=25):
+    if not votos_dict or sum(votos_dict.values()) == 0:
+        return {}
+    
+    # Solo partidos con más del 5% (umbral electoral típico en municipales)
+    total_votos = sum(votos_dict.values())
+    partidos_validos = {p: v for p, v in votos_dict.items() if v >= (total_votos * 0.05)}
+    
+    reparto = {p: 0 for p in partidos_validos}
+    for _ in range(escanios):
+        max_cociente = -1
+        ganador = ""
+        for p, v in partidos_validos.items():
+            cociente = v / (reparto[p] + 1)
+            if cociente > max_cociente:
+                max_cociente = cociente
+                ganador = p
+        if ganador:
+            reparto[ganador] += 1
+    return reparto
+
         "por_and": int(nueva_fila["Por_And"]),
         "otros": int(nueva_fila["Otros"])
     }).execute()
@@ -177,16 +198,16 @@ with tab_votos:
 
     with st.form("form_registro"):
         c_top1, c_top2 = st.columns(2)
-        resp = c_top1.text_input("Interventor / Apoderado", value=v_interventor, key=f"interventor_{id_actual}")
-        censo_in = c_top2.number_input("Censo Total", min_value=0, value=v_censo, key=f"censo_{id_actual}")
+        resp = c_top1.text_input("Interventor / Apoderado", value=v_interventor)
+        censo_in = c_top2.number_input("Censo Total", min_value=0, value=v_censo)
 
         c1, c2, c3 = st.columns(3)
-        pp_in = c1.number_input("PP", min_value=0, value=v_pp, key=f"pp_{id_actual}")
-        psoe_in = c2.number_input("PSOE", min_value=0, value=v_psoe, key=f"psoe_{id_actual}")
-        vox_in = c3.number_input("VOX", min_value=0, value=v_vox, key=f"vox_{id_actual}")
-        ade_in = c1.number_input("Adelante", min_value=0, value=v_ade, key=f"adelante_{id_actual}")
-        por_in = c2.number_input("Por Andalucía", min_value=0, value=v_por, key=f"porand_{id_actual}")
-        otr_in = c3.number_input("Otros", min_value=0, value=v_otr, key=f"otros_{id_actual}")
+        pp_in = c1.number_input("PP", min_value=0, value=v_pp)
+        psoe_in = c2.number_input("PSOE", min_value=0, value=v_psoe)
+        vox_in = c3.number_input("VOX", min_value=0, value=v_vox)
+        ade_in = c1.number_input("Adelante", min_value=0, value=v_ade)
+        por_in = c2.number_input("Por Andalucía", min_value=0, value=v_por)
+        otr_in = c3.number_input("Otros", min_value=0, value=v_otr)
 
         if st.form_submit_button("Guardar Datos"):
             d_val = int(id_actual.split("-")[0])
@@ -208,12 +229,67 @@ with tab_analisis:
     if st.session_state.votos.empty:
         st.warning("No hay votos registrados.")
     else:
-        df_v = st.session_state.votos
+        df_v = st.session_state.votos.copy()
+        for c in ["PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros", "Electores", "Dist", "Secc"]:
+            df_v[c] = pd.to_numeric(df_v[c], errors="coerce").fillna(0)
+
+        # Filtros de visualización
+        col_fil1, col_fil2 = st.columns(2)
+        tipo_analisis = col_fil1.selectbox("Ver datos por:", ["Ciudad (Global)", "Distrito", "Sección", "Mesa Individual"])
+        
+        df_display = df_v.copy()
+        if tipo_analisis == "Distrito":
+            distrito_sel = col_fil2.selectbox("Selecciona Distrito", sorted(df_v["Dist"].unique()))
+            df_display = df_v[df_v["Dist"] == distrito_sel]
+        elif tipo_analisis == "Sección":
+            seccion_sel = col_fil2.selectbox("Selecciona Sección", sorted(df_v["Secc"].unique()))
+            df_display = df_v[df_v["Secc"] == seccion_sel]
+        elif tipo_analisis == "Mesa Individual":
+            mesa_sel = col_fil2.selectbox("Selecciona Mesa", sorted(df_v["ID_Mesa"].unique()))
+            df_display = df_v[df_v["ID_Mesa"] == mesa_sel]
+
+        # Resumen de Votos
         cols_p = ["PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros"]
-        totales = df_v[cols_p].apply(pd.to_numeric, errors="coerce").sum().reset_index()
-        totales.columns = ["Partido", "Votos"]
-        fig = px.bar(totales, x="Partido", y="Votos", color="Partido", color_discrete_map=COLOR_MAP)
-        st.plotly_chart(fig, use_container_width=True)
+        resumen = df_display[cols_p].sum()
+        
+        c1, c2, c3 = st.columns([2, 1, 1])
+        
+        with c1:
+            st.subheader(f"Distribución de Votos - {tipo_analisis}")
+            totales_graf = resumen.reset_index()
+            totales_graf.columns = ["Partido", "Votos"]
+            fig = px.bar(totales_graf, x="Partido", y="Votos", color="Partido", 
+                         color_discrete_map=COLOR_MAP, text_auto=True)
+            st.plotly_chart(fig, use_container_width=True)
+
+        with c2:
+            st.subheader("Estimación Concejales")
+            # Ley D'Hondt (Asumiendo 25 concejales en San Fernando)
+            votos_dict = resumen.to_dict()
+            reparto = calcular_dhondt(votos_dict, escanios=25)
+            if reparto:
+                df_reparto = pd.DataFrame(list(reparto.items()), columns=["Partido", "Concejales"])
+                df_reparto = df_reparto[df_reparto["Concejales"] > 0].sort_values("Concejales", ascending=False)
+                for _, r in df_reparto.iterrows():
+                    st.metric(r["Partido"], f"{int(r['Concejales'])} actas")
+            else:
+                st.write("Datos insuficientes para el reparto.")
+
+        with c3:
+            st.subheader("Participación")
+            censo_tot = df_display["Electores"].sum()
+            votos_tot = resumen.sum()
+            if censo_tot > 0:
+                perc = (votos_tot / censo_tot) * 100
+                st.metric("Participación", f"{perc:.2f}%")
+                st.write(f"Votos: {int(votos_tot)}")
+                st.write(f"Censo: {int(censo_tot)}")
+            else:
+                st.write("Censo no registrado.")
+
+        st.divider()
+        st.subheader("Detalle de Datos")
+        st.dataframe(df_display, use_container_width=True)
 
 # --- PESTAÑA 3: CONFIGURACIÓN ---
 with tab_config:
