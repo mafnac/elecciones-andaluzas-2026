@@ -266,7 +266,7 @@ with tab_analisis:
             df_v[c] = pd.to_numeric(df_v[c], errors="coerce").fillna(0)
 
         # Selector de nivel de análisis
-        col_fil1, col_fil2 = st.columns(2)
+        col_fil1, col_fil2, col_fil3 = st.columns(3)
         tipo_analisis = col_fil1.selectbox(
             "Ver datos por:",
             ["Ciudad (Global)", "Distrito", "Sección", "Mesa Individual"]
@@ -277,11 +277,16 @@ with tab_analisis:
             distrito_sel = col_fil2.selectbox("Selecciona Distrito", sorted(df_v["Dist"].unique()))
             df_display = df_v[df_v["Dist"] == distrito_sel]
         elif tipo_analisis == "Sección":
-            seccion_sel = col_fil2.selectbox("Selecciona Sección", sorted(df_v["Secc"].unique()))
-            df_display = df_v[df_v["Secc"] == seccion_sel]
+            distrito_sel = col_fil2.selectbox("Selecciona Distrito", sorted(df_v["Dist"].unique()))
+            df_dist = df_v[df_v["Dist"] == distrito_sel]
+            secciones_disponibles = sorted(df_dist["Secc"].unique())
+            seccion_sel = col_fil3.selectbox("Selecciona Sección", secciones_disponibles)
+            df_display = df_dist[df_dist["Secc"] == seccion_sel]
         elif tipo_analisis == "Mesa Individual":
-            mesa_sel = col_fil2.selectbox("Selecciona Mesa", sorted(df_v["ID_Mesa"].unique()))
-            df_display = df_v[df_v["ID_Mesa"] == mesa_sel]
+            distrito_sel = col_fil2.selectbox("Selecciona Distrito", sorted(df_v["Dist"].unique()))
+            df_dist = df_v[df_v["Dist"] == distrito_sel]
+            mesa_sel = col_fil3.selectbox("Selecciona Mesa", sorted(df_dist["ID_Mesa"].unique()))
+            df_display = df_dist[df_dist["ID_Mesa"] == mesa_sel]
 
         cols_p = ["PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros"]
         resumen = df_display[cols_p].sum()
