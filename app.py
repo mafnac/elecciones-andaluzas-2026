@@ -177,16 +177,16 @@ with tab_votos:
 
     with st.form("form_registro"):
         c_top1, c_top2 = st.columns(2)
-        resp = c_top1.text_input("Interventor / Apoderado", value=v_interventor)
-        censo_in = c_top2.number_input("Censo Total", min_value=0, value=v_censo)
+        resp = c_top1.text_input("Interventor / Apoderado", value=v_interventor, key=f"interventor_{id_actual}")
+        censo_in = c_top2.number_input("Censo Total", min_value=0, value=v_censo, key=f"censo_{id_actual}")
 
         c1, c2, c3 = st.columns(3)
-        pp_in = c1.number_input("PP", min_value=0, value=v_pp)
-        psoe_in = c2.number_input("PSOE", min_value=0, value=v_psoe)
-        vox_in = c3.number_input("VOX", min_value=0, value=v_vox)
-        ade_in = c1.number_input("Adelante", min_value=0, value=v_ade)
-        por_in = c2.number_input("Por Andalucía", min_value=0, value=v_por)
-        otr_in = c3.number_input("Otros", min_value=0, value=v_otr)
+        pp_in = c1.number_input("PP", min_value=0, value=v_pp, key=f"pp_{id_actual}")
+        psoe_in = c2.number_input("PSOE", min_value=0, value=v_psoe, key=f"psoe_{id_actual}")
+        vox_in = c3.number_input("VOX", min_value=0, value=v_vox, key=f"vox_{id_actual}")
+        ade_in = c1.number_input("Adelante", min_value=0, value=v_ade, key=f"adelante_{id_actual}")
+        por_in = c2.number_input("Por Andalucía", min_value=0, value=v_por, key=f"porand_{id_actual}")
+        otr_in = c3.number_input("Otros", min_value=0, value=v_otr, key=f"otros_{id_actual}")
 
         if st.form_submit_button("Guardar Datos"):
             d_val = int(id_actual.split("-")[0])
