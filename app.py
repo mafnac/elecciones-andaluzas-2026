@@ -37,7 +37,7 @@ DATA_INICIAL = [
     ["CEIP MANUEL DE FALLA", 6, 2, "A"], ["CEIP MANUEL DE FALLA", 6, 2, "B"], ["CEIP MANUEL DE FALLA", 6, 3, "U"], ["CEIP MANUEL DE FALLA", 6, 18, "U"],
     ["CEIP PADRE JOSÉ CASAL CARRILLO", 5, 1, "A"], ["CEIP PADRE JOSÉ CASAL CARRILLO", 5, 1, "B"], ["CEIP PADRE JOSÉ CASAL CARRILLO", 5, 2, "U"], ["CEIP PADRE JOSÉ CASAL CARRILLO", 5, 7, "A"], ["CEIP PADRE JOSÉ CASAL CARRILLO", 5, 7, "B"],
     ["CEIP QUINTANILLA", 1, 6, "U"], ["CEIP QUINTANILLA", 1, 10, "U"], ["CEIP QUINTANILLA", 1, 16, "U"],
-    ["CEIP REINA DE LA PAZ", 6, 6, "U"], ["CEIP REINA DE LA PAZ", 6, 15, "A"], ["CEIP REINA DE la PAZ", 6, 15, "B"], ["CEIP REINA DE LA PAZ", 6, 20, "A"], ["CEIP REINA DE LA PAZ", 6, 20, "B"],
+    ["CEIP REINA DE LA PAZ", 6, 6, "U"], ["CEIP REINA DE LA PAZ", 6, 15, "A"], ["CEIP REINA DE LA PAZ", 6, 15, "B"], ["CEIP REINA DE LA PAZ", 6, 20, "A"], ["CEIP REINA DE LA PAZ", 6, 20, "B"],
     ["CEIP SAN IGNACIO", 1, 9, "A"], ["CEIP SAN IGNACIO", 1, 9, "B"], ["CEIP SAN IGNACIO", 3, 5, "A"], ["CEIP SAN IGNACIO", 3, 5, "B"],
     ["CEIP SERVANDO CAMÚÑEZ", 4, 4, "A"], ["CEIP SERVANDO CAMÚÑEZ", 4, 4, "B"],
     ["CENTRO DE CONGRESOS", 4, 3, "A"], ["CENTRO DE CONGRESOS", 4, 3, "B"], ["CENTRO DE CONGRESOS", 5, 3, "U"],
@@ -53,7 +53,15 @@ DATA_INICIAL = [
     ["REAL, 63", 3, 2, "A"], ["REAL, 63", 3, 2, "B"]
 ]
 
-# --- FUNCIONES DE CARGA Y GUARDADO ---
+# --- COLORES OFICIALES ---
+COLOR_MAP = {
+    "PP": "#1E4B8F", "PSOE": "#EF1C27", "VOX": "#63BE21",
+    "Adelante": "#00C2E0", "Por_And": "#622D8B", "Otros": "#A0A0A0"
+}
+
+# ============================================================
+# FUNCIONES DE ACCESO A SUPABASE
+# ============================================================
 
 def cargar_mesas_master():
     res = supabase.table("mesas_master").select("*").execute()
@@ -62,61 +70,89 @@ def cargar_mesas_master():
         df = df.rename(columns={
             "colegio": "Colegio", "distrito": "Dist",
             "seccion": "Secc", "mesa": "Mesa",
-            "interventor": "Interventor", "suplente_interventor": "Suplente_Interventor",
-            "apoderado": "Apoderado", "suplente_apoderado": "Suplente_Apoderado"
+            "interventor": "Interventor",
+            "suplente_interventor": "Suplente_Interventor",
+            "apoderado": "Apoderado",
+            "suplente_apoderado": "Suplente_Apoderado"
         })
-        cols = ["id", "Colegio", "Dist", "Secc", "Mesa", "Interventor", "Suplente_Interventor", "Apoderado", "Suplente_Apoderado"]
+        cols = ["id", "Colegio", "Dist", "Secc", "Mesa",
+                "Interventor", "Suplente_Interventor", "Apoderado", "Suplente_Apoderado"]
         cols_existentes = [c for c in cols if c in df.columns]
         return df[cols_existentes]
     return pd.DataFrame()
 
+
 def poblar_mesas_master():
-    """Inserta las 115 mesas en Supabase si la tabla está vacía."""
     filas = []
     for row in DATA_INICIAL:
         filas.append({
             "colegio": row[0], "distrito": row[1], "seccion": row[2], "mesa": row[3],
-            "interventor": "", "suplente_interventor": "", "apoderado": "", "suplente_apoderado": ""
+            "interventor": "", "suplente_interventor": "",
+            "apoderado": "", "suplente_apoderado": ""
         })
     supabase.table("mesas_master").insert(filas).execute()
+
 
 def cargar_votos():
     res = supabase.table("votos").select("*").execute()
     if res.data:
         df = pd.DataFrame(res.data)
         df = df.rename(columns={
-            "municipio": "Municipio", "distrito": "Dist", "seccion": "Secc", "mesa": "Mesa",
-            "id_mesa": "ID_Mesa", "colegio": "Colegio", "interventor": "Interventor",
-            "electores": "Electores", "pp": "PP", "psoe": "PSOE", "vox": "VOX",
+            "id_mesa": "ID_Mesa", "colegio": "Colegio",
+            "distrito": "Dist", "seccion": "Secc",
+            "interventor": "Interventor", "electores": "Electores",
+            "pp": "PP", "psoe": "PSOE", "vox": "VOX",
             "adelante": "Adelante", "por_and": "Por_And", "otros": "Otros"
         })
         return df
-    return pd.DataFrame(columns=["ID_Mesa", "Colegio", "Dist", "Secc", "Interventor", "Electores", "PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros"])
+    return pd.DataFrame(columns=[
+        "ID_Mesa", "Colegio", "Dist", "Secc", "Interventor",
+        "Electores", "PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros"
+    ])
+
 
 def guardar_voto(nueva_fila: dict):
     id_mesa = nueva_fila["ID_Mesa"]
-    # Borrar si ya existe
     supabase.table("votos").delete().eq("id_mesa", id_mesa).execute()
-    # Insertar nuevo
     supabase.table("votos").insert({
-        "id_mesa": nueva_fila["ID_Mesa"],
-        "colegio": nueva_fila["Colegio"],
-        "distrito": int(nueva_fila["Dist"]),
-        "seccion": int(nueva_fila["Secc"]),
+        "id_mesa":    nueva_fila["ID_Mesa"],
+        "colegio":    nueva_fila["Colegio"],
+        "distrito":   int(nueva_fila["Dist"]),
+        "seccion":    int(nueva_fila["Secc"]),
         "interventor": nueva_fila["Interventor"],
-        "electores": int(nueva_fila["Electores"]),
-        "pp": int(nueva_fila["PP"]),
-        "psoe": int(nueva_fila["PSOE"]),
-        "vox": int(nueva_fila["VOX"]),
-        "adelante": int(nueva_fila["Adelante"]),
+        "electores":  int(nueva_fila["Electores"]),
+        "pp":         int(nueva_fila["PP"]),
+        "psoe":       int(nueva_fila["PSOE"]),
+        "vox":        int(nueva_fila["VOX"]),
+        "adelante":   int(nueva_fila["Adelante"]),
+        "por_and":    int(nueva_fila["Por_And"]),
+        "otros":      int(nueva_fila["Otros"])
+    }).execute()
+
+
+def guardar_maestro(df: pd.DataFrame):
+    for _, row in df.iterrows():
+        supabase.table("mesas_master").update({
+            "interventor":          str(row.get("Interventor", "") or ""),
+            "suplente_interventor": str(row.get("Suplente_Interventor", "") or ""),
+            "apoderado":            str(row.get("Apoderado", "") or ""),
+            "suplente_apoderado":   str(row.get("Suplente_Apoderado", "") or "")
+        }).eq("id", int(row["id"])).execute()
+
+
+def borrar_todos_los_votos():
+    supabase.table("votos").delete().neq("id_mesa", "___NONE___").execute()
+
+
+# ============================================================
+# FUNCIÓN LEY D'HONDT
+# ============================================================
+
 def calcular_dhondt(votos_dict, escanios=25):
     if not votos_dict or sum(votos_dict.values()) == 0:
         return {}
-    
-    # Solo partidos con más del 5% (umbral electoral típico en municipales)
     total_votos = sum(votos_dict.values())
     partidos_validos = {p: v for p, v in votos_dict.items() if v >= (total_votos * 0.05)}
-    
     reparto = {p: 0 for p in partidos_validos}
     for _ in range(escanios):
         max_cociente = -1
@@ -130,23 +166,11 @@ def calcular_dhondt(votos_dict, escanios=25):
             reparto[ganador] += 1
     return reparto
 
-        "por_and": int(nueva_fila["Por_And"]),
-        "otros": int(nueva_fila["Otros"])
-    }).execute()
 
-def guardar_maestro(df: pd.DataFrame):
-    for _, row in df.iterrows():
-        supabase.table("mesas_master").update({
-            "interventor": str(row.get("Interventor", "") or ""),
-            "suplente_interventor": str(row.get("Suplente_Interventor", "") or ""),
-            "apoderado": str(row.get("Apoderado", "") or ""),
-            "suplente_apoderado": str(row.get("Suplente_Apoderado", "") or "")
-        }).eq("id", int(row["id"])).execute()
+# ============================================================
+# INICIALIZACIÓN DE SESSION STATE
+# ============================================================
 
-def borrar_todos_los_votos():
-    supabase.table("votos").delete().neq("id_mesa", "___NONE___").execute()
-
-# --- INICIALIZACIÓN ---
 if 'mesas_master' not in st.session_state:
     df_master = cargar_mesas_master()
     if df_master.empty:
@@ -157,22 +181,24 @@ if 'mesas_master' not in st.session_state:
 if 'votos' not in st.session_state:
     st.session_state.votos = cargar_votos()
 
-# Colores oficiales
-COLOR_MAP = {
-    "PP": "#1E4B8F", "PSOE": "#EF1C27", "VOX": "#63BE21",
-    "Adelante": "#00C2E0", "Por_And": "#622D8B", "Otros": "#A0A0A0"
-}
+
+# ============================================================
+# INTERFAZ
+# ============================================================
 
 st.title("🗳️ Escrutinio Andaluzas San Fernando")
 
 tab_votos, tab_analisis, tab_config = st.tabs(["Registro de Datos", "Análisis por Zona", "🔒 Configuración"])
+
 
 # --- PESTAÑA 1: REGISTRO ---
 with tab_votos:
     st.header("Entrada de Datos")
 
     df_m = st.session_state.mesas_master
-    opciones = df_m.apply(lambda x: f"{x['Dist']}-{x['Secc']}-{x['Mesa']} | {x['Colegio']}", axis=1).tolist()
+    opciones = df_m.apply(
+        lambda x: f"{x['Dist']}-{x['Secc']}-{x['Mesa']} | {x['Colegio']}", axis=1
+    ).tolist()
     seleccion = st.selectbox("Selecciona la Mesa", opciones, key="main_selector")
 
     id_actual = seleccion.split(" | ")[0]
@@ -183,13 +209,13 @@ with tab_votos:
     if not datos_existentes.empty:
         fila = datos_existentes.iloc[0]
         v_interventor = fila["Interventor"]
-        v_censo = int(fila["Electores"])
-        v_pp = int(fila["PP"])
-        v_psoe = int(fila["PSOE"])
-        v_vox = int(fila["VOX"])
-        v_ade = int(fila["Adelante"])
-        v_por = int(fila["Por_And"])
-        v_otr = int(fila["Otros"])
+        v_censo  = int(fila["Electores"])
+        v_pp     = int(fila["PP"])
+        v_psoe   = int(fila["PSOE"])
+        v_vox    = int(fila["VOX"])
+        v_ade    = int(fila["Adelante"])
+        v_por    = int(fila["Por_And"])
+        v_otr    = int(fila["Otros"])
         st.info(f"📍 Datos actuales de la mesa {id_actual}")
     else:
         v_interventor, v_censo = "", 0
@@ -198,45 +224,54 @@ with tab_votos:
 
     with st.form("form_registro"):
         c_top1, c_top2 = st.columns(2)
-        resp = c_top1.text_input("Interventor / Apoderado", value=v_interventor)
-        censo_in = c_top2.number_input("Censo Total", min_value=0, value=v_censo)
+        resp     = c_top1.text_input("Interventor / Apoderado", value=v_interventor, key=f"interventor_{id_actual}")
+        censo_in = c_top2.number_input("Censo Total", min_value=0, value=v_censo, key=f"censo_{id_actual}")
 
         c1, c2, c3 = st.columns(3)
-        pp_in = c1.number_input("PP", min_value=0, value=v_pp)
-        psoe_in = c2.number_input("PSOE", min_value=0, value=v_psoe)
-        vox_in = c3.number_input("VOX", min_value=0, value=v_vox)
-        ade_in = c1.number_input("Adelante", min_value=0, value=v_ade)
-        por_in = c2.number_input("Por Andalucía", min_value=0, value=v_por)
-        otr_in = c3.number_input("Otros", min_value=0, value=v_otr)
+        pp_in   = c1.number_input("PP",           min_value=0, value=v_pp,   key=f"pp_{id_actual}")
+        psoe_in = c2.number_input("PSOE",         min_value=0, value=v_psoe, key=f"psoe_{id_actual}")
+        vox_in  = c3.number_input("VOX",          min_value=0, value=v_vox,  key=f"vox_{id_actual}")
+        ade_in  = c1.number_input("Adelante",     min_value=0, value=v_ade,  key=f"ade_{id_actual}")
+        por_in  = c2.number_input("Por Andalucía",min_value=0, value=v_por,  key=f"por_{id_actual}")
+        otr_in  = c3.number_input("Otros",        min_value=0, value=v_otr,  key=f"otr_{id_actual}")
 
         if st.form_submit_button("Guardar Datos"):
             d_val = int(id_actual.split("-")[0])
             s_val = int(id_actual.split("-")[1])
             nueva_fila = {
-                "ID_Mesa": id_actual, "Colegio": col_actual, "Dist": d_val, "Secc": s_val,
+                "ID_Mesa": id_actual, "Colegio": col_actual,
+                "Dist": d_val, "Secc": s_val,
                 "Interventor": resp, "Electores": censo_in,
                 "PP": pp_in, "PSOE": psoe_in, "VOX": vox_in,
                 "Adelante": ade_in, "Por_And": por_in, "Otros": otr_in
             }
             guardar_voto(nueva_fila)
-            st.session_state.votos = st.session_state.votos[st.session_state.votos.ID_Mesa != id_actual]
-            st.session_state.votos = pd.concat([st.session_state.votos, pd.DataFrame([nueva_fila])], ignore_index=True)
+            st.session_state.votos = st.session_state.votos[
+                st.session_state.votos.ID_Mesa != id_actual
+            ]
+            st.session_state.votos = pd.concat(
+                [st.session_state.votos, pd.DataFrame([nueva_fila])], ignore_index=True
+            )
             st.success("✅ ¡Guardado en Supabase!")
             st.rerun()
+
 
 # --- PESTAÑA 2: ANÁLISIS ---
 with tab_analisis:
     if st.session_state.votos.empty:
-        st.warning("No hay votos registrados.")
+        st.warning("No hay votos registrados aún.")
     else:
         df_v = st.session_state.votos.copy()
         for c in ["PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros", "Electores", "Dist", "Secc"]:
             df_v[c] = pd.to_numeric(df_v[c], errors="coerce").fillna(0)
 
-        # Filtros de visualización
+        # Selector de nivel de análisis
         col_fil1, col_fil2 = st.columns(2)
-        tipo_analisis = col_fil1.selectbox("Ver datos por:", ["Ciudad (Global)", "Distrito", "Sección", "Mesa Individual"])
-        
+        tipo_analisis = col_fil1.selectbox(
+            "Ver datos por:",
+            ["Ciudad (Global)", "Distrito", "Sección", "Mesa Individual"]
+        )
+
         df_display = df_v.copy()
         if tipo_analisis == "Distrito":
             distrito_sel = col_fil2.selectbox("Selecciona Distrito", sorted(df_v["Dist"].unique()))
@@ -248,32 +283,34 @@ with tab_analisis:
             mesa_sel = col_fil2.selectbox("Selecciona Mesa", sorted(df_v["ID_Mesa"].unique()))
             df_display = df_v[df_v["ID_Mesa"] == mesa_sel]
 
-        # Resumen de Votos
         cols_p = ["PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros"]
         resumen = df_display[cols_p].sum()
-        
+
         c1, c2, c3 = st.columns([2, 1, 1])
-        
+
         with c1:
-            st.subheader(f"Distribución de Votos - {tipo_analisis}")
+            st.subheader(f"Distribución de Votos — {tipo_analisis}")
             totales_graf = resumen.reset_index()
             totales_graf.columns = ["Partido", "Votos"]
-            fig = px.bar(totales_graf, x="Partido", y="Votos", color="Partido", 
-                         color_discrete_map=COLOR_MAP, text_auto=True)
+            fig = px.bar(
+                totales_graf, x="Partido", y="Votos",
+                color="Partido", color_discrete_map=COLOR_MAP, text_auto=True
+            )
             st.plotly_chart(fig, use_container_width=True)
 
         with c2:
             st.subheader("Estimación Concejales")
-            # Ley D'Hondt (Asumiendo 25 concejales en San Fernando)
             votos_dict = resumen.to_dict()
             reparto = calcular_dhondt(votos_dict, escanios=25)
             if reparto:
-                df_reparto = pd.DataFrame(list(reparto.items()), columns=["Partido", "Concejales"])
-                df_reparto = df_reparto[df_reparto["Concejales"] > 0].sort_values("Concejales", ascending=False)
+                df_reparto = pd.DataFrame(
+                    list(reparto.items()), columns=["Partido", "Concejales"]
+                ).sort_values("Concejales", ascending=False)
+                df_reparto = df_reparto[df_reparto["Concejales"] > 0]
                 for _, r in df_reparto.iterrows():
                     st.metric(r["Partido"], f"{int(r['Concejales'])} actas")
             else:
-                st.write("Datos insuficientes para el reparto.")
+                st.info("Datos insuficientes para el reparto.")
 
         with c3:
             st.subheader("Participación")
@@ -282,31 +319,38 @@ with tab_analisis:
             if censo_tot > 0:
                 perc = (votos_tot / censo_tot) * 100
                 st.metric("Participación", f"{perc:.2f}%")
-                st.write(f"Votos: {int(votos_tot)}")
-                st.write(f"Censo: {int(censo_tot)}")
+                st.write(f"Votos computados: **{int(votos_tot)}**")
+                st.write(f"Censo total: **{int(censo_tot)}**")
             else:
-                st.write("Censo no registrado.")
+                st.info("Introduce el censo en cada mesa para ver la participación.")
 
         st.divider()
-        st.subheader("Detalle de Datos")
+        st.subheader("Detalle de Mesas")
         st.dataframe(df_display, use_container_width=True)
+
 
 # --- PESTAÑA 3: CONFIGURACIÓN ---
 with tab_config:
     st.header("Zona de Administración")
 
-    password_input = st.text_input("Introduce la clave de administrador para editar:", type="password")
+    password_input = st.text_input(
+        "Introduce la clave de administrador para editar:", type="password"
+    )
 
     if password_input == PASSWORD_SISTEMA:
         st.success("Acceso concedido.")
         st.subheader("Maestro de Mesas")
 
-        cols_edit = ["Colegio", "Dist", "Secc", "Mesa", "Interventor", "Suplente_Interventor", "Apoderado", "Suplente_Apoderado"]
+        cols_edit = [
+            "Colegio", "Dist", "Secc", "Mesa",
+            "Interventor", "Suplente_Interventor", "Apoderado", "Suplente_Apoderado"
+        ]
         cols_mostrar = [c for c in cols_edit if c in st.session_state.mesas_master.columns]
-        df_edit = st.data_editor(st.session_state.mesas_master[cols_mostrar], num_rows="fixed")
+        df_edit = st.data_editor(
+            st.session_state.mesas_master[cols_mostrar], num_rows="fixed"
+        )
 
         if st.button("Confirmar cambios en el Maestro"):
-            # Actualizar con los ids originales
             df_con_id = st.session_state.mesas_master.copy()
             for col in cols_mostrar:
                 df_con_id[col] = df_edit[col].values
@@ -318,7 +362,10 @@ with tab_config:
 
         if st.button("⚠️ BORRAR TODOS LOS VOTOS (Reiniciar Jornada)"):
             borrar_todos_los_votos()
-            st.session_state.votos = pd.DataFrame(columns=["ID_Mesa", "Colegio", "Dist", "Secc", "Interventor", "Electores", "PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros"])
+            st.session_state.votos = pd.DataFrame(columns=[
+                "ID_Mesa", "Colegio", "Dist", "Secc", "Interventor",
+                "Electores", "PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros"
+            ])
             st.warning("Se han borrado todos los registros de votos.")
             st.rerun()
 
