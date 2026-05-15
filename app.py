@@ -259,7 +259,10 @@ with col_user:
 
 tab_votos, tab_analisis, tab_config = st.tabs(["Registro de Datos", "Análisis por Zona", "🔒 Configuración"])
 
-# --- PESTAÑA 1: REGISTRO ---
+# ============================================================
+# PESTAÑA 1: REGISTRO DE DATOS (autoguardado con on_change)
+# ============================================================
+
 with tab_votos:
     st.header("Entrada de Datos")
 
@@ -272,14 +275,14 @@ with tab_votos:
     id_actual = seleccion.split(" | ")[0]
     col_actual = seleccion.split(" | ")[1]
 
-    # Recargar votos frescos de Supabase para esta mesa
+    # Cargar datos frescos de Supabase para esta mesa
     votos_frescos = cargar_votos()
     st.session_state.votos = votos_frescos
     datos_existentes = votos_frescos[votos_frescos.ID_Mesa == id_actual]
 
     if not datos_existentes.empty:
         fila = datos_existentes.iloc[0]
-        v_interventor = fila["Interventor"]
+        v_interventor = str(fila["Interventor"] or "")
         v_censo  = int(fila["Electores"])
         v_pp     = int(fila["PP"])
         v_psoe   = int(fila["PSOE"])
@@ -287,42 +290,69 @@ with tab_votos:
         v_ade    = int(fila["Adelante"])
         v_por    = int(fila["Por_And"])
         v_otr    = int(fila["Otros"])
-        st.info(f"📍 Datos actuales de la mesa {id_actual}")
+        st.info(f"📍 Datos actuales de la mesa **{id_actual}**")
     else:
         v_interventor, v_censo = "", 0
         v_pp = v_psoe = v_vox = v_ade = v_por = v_otr = 0
-        st.write("✨ Mesa sin datos.")
+        st.write("✨ Mesa sin datos registrados aún.")
 
-    with st.form("form_registro"):
-        c_top1, c_top2 = st.columns(2)
-        resp     = c_top1.text_input("Interventor / Apoderado", value=v_interventor, key=f"interventor_{id_actual}")
-        censo_in = c_top2.number_input("Censo Total", min_value=0, value=v_censo, key=f"censo_{id_actual}")
+    # Inicializar/resetear session_state cuando cambia la mesa
+    if st.session_state.get("_mesa_activa") != id_actual:
+        st.session_state["_mesa_activa"] = id_actual
+        st.session_state[f"interventor_{id_actual}"] = v_interventor
+        st.session_state[f"censo_{id_actual}"]       = v_censo
+        st.session_state[f"pp_{id_actual}"]          = v_pp
+        st.session_state[f"psoe_{id_actual}"]        = v_psoe
+        st.session_state[f"vox_{id_actual}"]         = v_vox
+        st.session_state[f"ade_{id_actual}"]         = v_ade
+        st.session_state[f"por_{id_actual}"]         = v_por
+        st.session_state[f"otr_{id_actual}"]         = v_otr
 
-        c1, c2, c3 = st.columns(3)
-        pp_in   = c1.number_input("PP",            min_value=0, value=v_pp,   key=f"pp_{id_actual}")
-        psoe_in = c2.number_input("PSOE",          min_value=0, value=v_psoe, key=f"psoe_{id_actual}")
-        vox_in  = c3.number_input("VOX",           min_value=0, value=v_vox,  key=f"vox_{id_actual}")
-        ade_in  = c1.number_input("Adelante",      min_value=0, value=v_ade,  key=f"ade_{id_actual}")
-        por_in  = c2.number_input("Por Andalucía", min_value=0, value=v_por,  key=f"por_{id_actual}")
-        otr_in  = c3.number_input("Otros",         min_value=0, value=v_otr,  key=f"otr_{id_actual}")
+    # Función de autoguardado — se llama con on_change en cada campo
+    def autoguardar():
+        d_val = int(id_actual.split("-")[0])
+        s_val = int(id_actual.split("-")[1])
+        guardar_voto({
+            "ID_Mesa":    id_actual,
+            "Colegio":    col_actual,
+            "Dist":       d_val,
+            "Secc":       s_val,
+            "Interventor": st.session_state.get(f"interventor_{id_actual}", ""),
+            "Electores":  st.session_state.get(f"censo_{id_actual}", 0),
+            "PP":         st.session_state.get(f"pp_{id_actual}", 0),
+            "PSOE":       st.session_state.get(f"psoe_{id_actual}", 0),
+            "VOX":        st.session_state.get(f"vox_{id_actual}", 0),
+            "Adelante":   st.session_state.get(f"ade_{id_actual}", 0),
+            "Por_And":    st.session_state.get(f"por_{id_actual}", 0),
+            "Otros":      st.session_state.get(f"otr_{id_actual}", 0),
+        })
+        st.toast("💾 Guardado", icon="✅")
 
-        if st.form_submit_button("Guardar Datos"):
-            d_val = int(id_actual.split("-")[0])
-            s_val = int(id_actual.split("-")[1])
-            nueva_fila = {
-                "ID_Mesa": id_actual, "Colegio": col_actual,
-                "Dist": d_val, "Secc": s_val,
-                "Interventor": resp,
-                "Electores": int(censo_in),
-                "PP": int(pp_in), "PSOE": int(psoe_in), "VOX": int(vox_in),
-                "Adelante": int(ade_in), "Por_And": int(por_in), "Otros": int(otr_in)
-            }
-            guardar_voto(nueva_fila)
-            st.session_state.votos = cargar_votos()
-            st.success("✅ ¡Guardado en Supabase!")
-            st.rerun()
+    # Campos sin st.form — autoguardan al pulsar Enter o Tab
+    c_top1, c_top2 = st.columns(2)
+    c_top1.text_input(
+        "Interventor / Apoderado",
+        key=f"interventor_{id_actual}",
+        on_change=autoguardar
+    )
+    c_top2.number_input(
+        "Censo Total", min_value=0,
+        key=f"censo_{id_actual}",
+        on_change=autoguardar
+    )
 
-# --- PESTAÑA 2: ANÁLISIS ---
+    c1, c2, c3 = st.columns(3)
+    c1.number_input("PP",            min_value=0, key=f"pp_{id_actual}",   on_change=autoguardar)
+    c2.number_input("PSOE",          min_value=0, key=f"psoe_{id_actual}", on_change=autoguardar)
+    c3.number_input("VOX",           min_value=0, key=f"vox_{id_actual}",  on_change=autoguardar)
+    c1.number_input("Adelante",      min_value=0, key=f"ade_{id_actual}",  on_change=autoguardar)
+    c2.number_input("Por Andalucía", min_value=0, key=f"por_{id_actual}",  on_change=autoguardar)
+    c3.number_input("Otros",         min_value=0, key=f"otr_{id_actual}",  on_change=autoguardar)
+
+# ============================================================
+# PESTAÑA 2: ANÁLISIS POR ZONA
+# ============================================================
+
 with tab_analisis:
     df_v = cargar_votos()
     st.session_state.votos = df_v
@@ -401,7 +431,10 @@ with tab_analisis:
         st.subheader("Detalle de Mesas")
         st.dataframe(df_display, use_container_width=True)
 
-# --- PESTAÑA 3: CONFIGURACIÓN ---
+# ============================================================
+# PESTAÑA 3: CONFIGURACIÓN
+# ============================================================
+
 with tab_config:
     st.header("Zona de Administración")
 
@@ -510,7 +543,7 @@ with tab_config:
             if st.button("Eliminar usuario seleccionado"):
                 ok = eliminar_usuario(opciones_borrar[usuario_borrar])
                 if ok:
-                    st.success(f"✅ Usuario eliminado.")
+                    st.success("✅ Usuario eliminado.")
                     st.rerun()
                 else:
                     st.error("❌ Error al eliminar el usuario.")
