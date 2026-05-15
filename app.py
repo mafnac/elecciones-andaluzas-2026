@@ -272,7 +272,10 @@ with tab_votos:
     id_actual = seleccion.split(" | ")[0]
     col_actual = seleccion.split(" | ")[1]
 
-    datos_existentes = st.session_state.votos[st.session_state.votos.ID_Mesa == id_actual]
+    # Recargar votos frescos de Supabase para esta mesa
+    votos_frescos = cargar_votos()
+    st.session_state.votos = votos_frescos
+    datos_existentes = votos_frescos[votos_frescos.ID_Mesa == id_actual]
 
     if not datos_existentes.empty:
         fila = datos_existentes.iloc[0]
@@ -309,26 +312,27 @@ with tab_votos:
             nueva_fila = {
                 "ID_Mesa": id_actual, "Colegio": col_actual,
                 "Dist": d_val, "Secc": s_val,
-                "Interventor": resp, "Electores": censo_in,
-                "PP": pp_in, "PSOE": psoe_in, "VOX": vox_in,
-                "Adelante": ade_in, "Por_And": por_in, "Otros": otr_in
+                "Interventor": resp,
+                "Electores": int(censo_in),
+                "PP": int(pp_in), "PSOE": int(psoe_in), "VOX": int(vox_in),
+                "Adelante": int(ade_in), "Por_And": int(por_in), "Otros": int(otr_in)
             }
             guardar_voto(nueva_fila)
-            st.session_state.votos = st.session_state.votos[
-                st.session_state.votos.ID_Mesa != id_actual
-            ]
-            st.session_state.votos = pd.concat(
-                [st.session_state.votos, pd.DataFrame([nueva_fila])], ignore_index=True
-            )
+            # Recargar siempre desde Supabase para garantizar consistencia
+            st.session_state.votos = cargar_votos()
             st.success("✅ ¡Guardado en Supabase!")
             st.rerun()
 
 # --- PESTAÑA 2: ANÁLISIS ---
 with tab_analisis:
-    if st.session_state.votos.empty:
+    # Siempre leer de Supabase para tener datos actualizados
+    df_v = cargar_votos()
+    st.session_state.votos = df_v
+
+    if df_v.empty:
         st.warning("No hay votos registrados aún.")
     else:
-        df_v = st.session_state.votos.copy()
+        df_v = df_v.copy()
         for c in ["PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros", "Electores", "Dist", "Secc"]:
             df_v[c] = pd.to_numeric(df_v[c], errors="coerce").fillna(0)
 
@@ -528,4 +532,5 @@ with tab_config:
     elif password_input != "":
         st.error("❌ Clave incorrecta. Contacta con el administrador.")
     else:
+        st.info("🔒 Por favor, introduce la clave para realizar cambios estructurales.")else:
         st.info("🔒 Por favor, introduce la clave para realizar cambios estructurales.")
