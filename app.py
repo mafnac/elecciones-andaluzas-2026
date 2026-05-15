@@ -318,14 +318,12 @@ with tab_votos:
                 "Adelante": int(ade_in), "Por_And": int(por_in), "Otros": int(otr_in)
             }
             guardar_voto(nueva_fila)
-            # Recargar siempre desde Supabase para garantizar consistencia
             st.session_state.votos = cargar_votos()
             st.success("✅ ¡Guardado en Supabase!")
             st.rerun()
 
 # --- PESTAÑA 2: ANÁLISIS ---
 with tab_analisis:
-    # Siempre leer de Supabase para tener datos actualizados
     df_v = cargar_votos()
     st.session_state.votos = df_v
 
@@ -532,5 +530,4 @@ with tab_config:
     elif password_input != "":
         st.error("❌ Clave incorrecta. Contacta con el administrador.")
     else:
-        st.info("🔒 Por favor, introduce la clave para realizar cambios estructurales.")else:
         st.info("🔒 Por favor, introduce la clave para realizar cambios estructurales.")
