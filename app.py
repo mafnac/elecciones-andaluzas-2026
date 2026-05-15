@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import bcrypt
 from supabase import create_client, Client
 
 # Configuración de página
 st.set_page_config(page_title="Escrutinio Andaluzas San Fernando", layout="wide")
 
-# --- CLAVE DE ACCESO ---
+# --- CLAVE MAESTRA DE ADMINISTRACIÓN ---
 PASSWORD_SISTEMA = "SF2026"
 
 # --- CONEXIÓN A SUPABASE ---
@@ -60,6 +61,41 @@ COLOR_MAP = {
 }
 
 # ============================================================
+# FUNCIONES DE AUTENTICACIÓN
+# ============================================================
+
+def validar_usuario(username: str, password: str) -> dict | None:
+    res = supabase.table("usuarios").select("*").eq("username", username).execute()
+    if res.data:
+        usuario = res.data[0]
+        if bcrypt.checkpw(password.encode("utf-8"), usuario["password_hash"].encode("utf-8")):
+            return usuario
+    return None
+
+def crear_usuario(username: str, nombre: str, password: str) -> bool:
+    try:
+        password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        supabase.table("usuarios").insert({
+            "username": username,
+            "nombre": nombre,
+            "password_hash": password_hash
+        }).execute()
+        return True
+    except Exception:
+        return False
+
+def eliminar_usuario(user_id: int) -> bool:
+    try:
+        supabase.table("usuarios").delete().eq("id", user_id).execute()
+        return True
+    except Exception:
+        return False
+
+def listar_usuarios() -> list:
+    res = supabase.table("usuarios").select("id, username, nombre").execute()
+    return res.data if res.data else []
+
+# ============================================================
 # FUNCIONES DE ACCESO A SUPABASE
 # ============================================================
 
@@ -81,7 +117,6 @@ def cargar_mesas_master():
         return df[cols_existentes]
     return pd.DataFrame()
 
-
 def poblar_mesas_master():
     filas = []
     for row in DATA_INICIAL:
@@ -91,7 +126,6 @@ def poblar_mesas_master():
             "apoderado": "", "suplente_apoderado": ""
         })
     supabase.table("mesas_master").insert(filas).execute()
-
 
 def cargar_votos():
     res = supabase.table("votos").select("*").execute()
@@ -110,25 +144,23 @@ def cargar_votos():
         "Electores", "PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros"
     ])
 
-
 def guardar_voto(nueva_fila: dict):
     id_mesa = nueva_fila["ID_Mesa"]
     supabase.table("votos").delete().eq("id_mesa", id_mesa).execute()
     supabase.table("votos").insert({
-        "id_mesa":    nueva_fila["ID_Mesa"],
-        "colegio":    nueva_fila["Colegio"],
-        "distrito":   int(nueva_fila["Dist"]),
-        "seccion":    int(nueva_fila["Secc"]),
+        "id_mesa":     nueva_fila["ID_Mesa"],
+        "colegio":     nueva_fila["Colegio"],
+        "distrito":    int(nueva_fila["Dist"]),
+        "seccion":     int(nueva_fila["Secc"]),
         "interventor": nueva_fila["Interventor"],
-        "electores":  int(nueva_fila["Electores"]),
-        "pp":         int(nueva_fila["PP"]),
-        "psoe":       int(nueva_fila["PSOE"]),
-        "vox":        int(nueva_fila["VOX"]),
-        "adelante":   int(nueva_fila["Adelante"]),
-        "por_and":    int(nueva_fila["Por_And"]),
-        "otros":      int(nueva_fila["Otros"])
+        "electores":   int(nueva_fila["Electores"]),
+        "pp":          int(nueva_fila["PP"]),
+        "psoe":        int(nueva_fila["PSOE"]),
+        "vox":         int(nueva_fila["VOX"]),
+        "adelante":    int(nueva_fila["Adelante"]),
+        "por_and":     int(nueva_fila["Por_And"]),
+        "otros":       int(nueva_fila["Otros"])
     }).execute()
-
 
 def guardar_maestro(df: pd.DataFrame):
     for _, row in df.iterrows():
@@ -139,10 +171,8 @@ def guardar_maestro(df: pd.DataFrame):
             "suplente_apoderado":   str(row.get("Suplente_Apoderado", "") or "")
         }).eq("id", int(row["id"])).execute()
 
-
 def borrar_todos_los_votos():
     supabase.table("votos").delete().neq("id_mesa", "___NONE___").execute()
-
 
 # ============================================================
 # FUNCIÓN LEY D'HONDT
@@ -166,9 +196,40 @@ def calcular_dhondt(votos_dict, escanios=25):
             reparto[ganador] += 1
     return reparto
 
+# ============================================================
+# PANTALLA DE LOGIN
+# ============================================================
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.usuario_actual = None
+
+if not st.session_state.logged_in:
+    st.title("🗳️ Escrutinio Andaluzas San Fernando")
+    st.markdown("---")
+    col_login, col_vacio = st.columns([1, 2])
+    with col_login:
+        st.subheader("🔐 Acceso al sistema")
+        with st.form("form_login"):
+            username_in = st.text_input("Usuario")
+            password_in = st.text_input("Contraseña", type="password")
+            submit_login = st.form_submit_button("Entrar", use_container_width=True)
+
+        if submit_login:
+            if username_in and password_in:
+                usuario = validar_usuario(username_in, password_in)
+                if usuario:
+                    st.session_state.logged_in = True
+                    st.session_state.usuario_actual = usuario
+                    st.rerun()
+                else:
+                    st.error("❌ Usuario o contraseña incorrectos.")
+            else:
+                st.warning("Por favor, introduce usuario y contraseña.")
+    st.stop()
 
 # ============================================================
-# INICIALIZACIÓN DE SESSION STATE
+# INICIALIZACIÓN DE SESSION STATE (solo si está logueado)
 # ============================================================
 
 if 'mesas_master' not in st.session_state:
@@ -181,15 +242,22 @@ if 'mesas_master' not in st.session_state:
 if 'votos' not in st.session_state:
     st.session_state.votos = cargar_votos()
 
-
 # ============================================================
-# INTERFAZ
+# INTERFAZ PRINCIPAL
 # ============================================================
 
-st.title("🗳️ Escrutinio Andaluzas San Fernando")
+col_titulo, col_user = st.columns([4, 1])
+with col_titulo:
+    st.title("🗳️ Escrutinio Andaluzas San Fernando")
+with col_user:
+    nombre_mostrar = st.session_state.usuario_actual.get("nombre") or st.session_state.usuario_actual.get("username")
+    st.markdown(f"<br>👤 **{nombre_mostrar}**", unsafe_allow_html=True)
+    if st.button("Cerrar sesión", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.usuario_actual = None
+        st.rerun()
 
 tab_votos, tab_analisis, tab_config = st.tabs(["Registro de Datos", "Análisis por Zona", "🔒 Configuración"])
-
 
 # --- PESTAÑA 1: REGISTRO ---
 with tab_votos:
@@ -228,12 +296,12 @@ with tab_votos:
         censo_in = c_top2.number_input("Censo Total", min_value=0, value=v_censo, key=f"censo_{id_actual}")
 
         c1, c2, c3 = st.columns(3)
-        pp_in   = c1.number_input("PP",           min_value=0, value=v_pp,   key=f"pp_{id_actual}")
-        psoe_in = c2.number_input("PSOE",         min_value=0, value=v_psoe, key=f"psoe_{id_actual}")
-        vox_in  = c3.number_input("VOX",          min_value=0, value=v_vox,  key=f"vox_{id_actual}")
-        ade_in  = c1.number_input("Adelante",     min_value=0, value=v_ade,  key=f"ade_{id_actual}")
-        por_in  = c2.number_input("Por Andalucía",min_value=0, value=v_por,  key=f"por_{id_actual}")
-        otr_in  = c3.number_input("Otros",        min_value=0, value=v_otr,  key=f"otr_{id_actual}")
+        pp_in   = c1.number_input("PP",            min_value=0, value=v_pp,   key=f"pp_{id_actual}")
+        psoe_in = c2.number_input("PSOE",          min_value=0, value=v_psoe, key=f"psoe_{id_actual}")
+        vox_in  = c3.number_input("VOX",           min_value=0, value=v_vox,  key=f"vox_{id_actual}")
+        ade_in  = c1.number_input("Adelante",      min_value=0, value=v_ade,  key=f"ade_{id_actual}")
+        por_in  = c2.number_input("Por Andalucía", min_value=0, value=v_por,  key=f"por_{id_actual}")
+        otr_in  = c3.number_input("Otros",         min_value=0, value=v_otr,  key=f"otr_{id_actual}")
 
         if st.form_submit_button("Guardar Datos"):
             d_val = int(id_actual.split("-")[0])
@@ -255,7 +323,6 @@ with tab_votos:
             st.success("✅ ¡Guardado en Supabase!")
             st.rerun()
 
-
 # --- PESTAÑA 2: ANÁLISIS ---
 with tab_analisis:
     if st.session_state.votos.empty:
@@ -265,7 +332,6 @@ with tab_analisis:
         for c in ["PP", "PSOE", "VOX", "Adelante", "Por_And", "Otros", "Electores", "Dist", "Secc"]:
             df_v[c] = pd.to_numeric(df_v[c], errors="coerce").fillna(0)
 
-        # Selector de nivel de análisis
         col_fil1, col_fil2, col_fil3 = st.columns(3)
         tipo_analisis = col_fil1.selectbox(
             "Ver datos por:",
@@ -333,7 +399,6 @@ with tab_analisis:
         st.subheader("Detalle de Mesas")
         st.dataframe(df_display, use_container_width=True)
 
-
 # --- PESTAÑA 3: CONFIGURACIÓN ---
 with tab_config:
     st.header("Zona de Administración")
@@ -344,8 +409,9 @@ with tab_config:
 
     if password_input == PASSWORD_SISTEMA:
         st.success("Acceso concedido.")
-        st.subheader("Maestro de Mesas")
 
+        # --- MAESTRO DE MESAS ---
+        st.subheader("Maestro de Mesas")
         cols_edit = [
             "Colegio", "Dist", "Secc", "Mesa",
             "Interventor", "Suplente_Interventor", "Apoderado", "Suplente_Apoderado"
@@ -354,7 +420,6 @@ with tab_config:
         df_edit = st.data_editor(
             st.session_state.mesas_master[cols_mostrar], num_rows="fixed"
         )
-
         if st.button("Confirmar cambios en el Maestro"):
             df_con_id = st.session_state.mesas_master.copy()
             for col in cols_mostrar:
@@ -364,9 +429,10 @@ with tab_config:
             st.success("✅ Maestro actualizado en Supabase.")
 
         st.divider()
+
+        # --- EXPORTAR DATOS ---
         st.subheader("📥 Exportar Datos")
 
-        # --- Exportar Maestro de Mesas (con apoderados/interventores actualizados) ---
         df_maestro_export = cargar_mesas_master()
         csv_maestro = df_maestro_export.to_csv(index=False).encode("utf-8")
         st.download_button(
@@ -376,7 +442,6 @@ with tab_config:
             mime="text/csv"
         )
 
-        # --- Exportar Resultados de Votos ---
         df_votos_export = cargar_votos()
         csv_votos = df_votos_export.to_csv(index=False).encode("utf-8")
         st.download_button(
@@ -386,7 +451,6 @@ with tab_config:
             mime="text/csv"
         )
 
-        # --- Exportar CSV combinado (maestro + votos) ---
         if not df_votos_export.empty and not df_maestro_export.empty:
             df_combinado = pd.merge(
                 df_maestro_export,
@@ -405,6 +469,53 @@ with tab_config:
 
         st.divider()
 
+        # --- GESTIÓN DE USUARIOS ---
+        st.subheader("👥 Gestión de Usuarios")
+
+        usuarios_actuales = listar_usuarios()
+        if usuarios_actuales:
+            df_usuarios = pd.DataFrame(usuarios_actuales)[["id", "username", "nombre"]]
+            df_usuarios.columns = ["ID", "Usuario", "Nombre"]
+            st.dataframe(df_usuarios, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay usuarios registrados aún.")
+
+        st.markdown("**➕ Crear nuevo usuario**")
+        with st.form("form_nuevo_usuario"):
+            col_u1, col_u2 = st.columns(2)
+            nuevo_username = col_u1.text_input("Nombre de usuario")
+            nuevo_nombre   = col_u2.text_input("Nombre completo")
+            col_u3, col_u4 = st.columns(2)
+            nueva_pass     = col_u3.text_input("Contraseña", type="password")
+            nueva_pass2    = col_u4.text_input("Repetir contraseña", type="password")
+            if st.form_submit_button("Crear usuario"):
+                if not nuevo_username or not nueva_pass:
+                    st.error("El usuario y la contraseña son obligatorios.")
+                elif nueva_pass != nueva_pass2:
+                    st.error("Las contraseñas no coinciden.")
+                else:
+                    ok = crear_usuario(nuevo_username, nuevo_nombre, nueva_pass)
+                    if ok:
+                        st.success(f"✅ Usuario '{nuevo_username}' creado correctamente.")
+                        st.rerun()
+                    else:
+                        st.error("❌ Error al crear el usuario. ¿Ya existe ese nombre de usuario?")
+
+        st.markdown("**🗑️ Eliminar usuario**")
+        if usuarios_actuales:
+            opciones_borrar = {f"{u['username']} ({u['nombre']})": u["id"] for u in usuarios_actuales}
+            usuario_borrar = st.selectbox("Selecciona usuario a eliminar", list(opciones_borrar.keys()))
+            if st.button("Eliminar usuario seleccionado"):
+                ok = eliminar_usuario(opciones_borrar[usuario_borrar])
+                if ok:
+                    st.success(f"✅ Usuario eliminado.")
+                    st.rerun()
+                else:
+                    st.error("❌ Error al eliminar el usuario.")
+
+        st.divider()
+
+        # --- BORRAR VOTOS ---
         if st.button("⚠️ BORRAR TODOS LOS VOTOS (Reiniciar Jornada)"):
             borrar_todos_los_votos()
             st.session_state.votos = pd.DataFrame(columns=[
